@@ -1,3 +1,11 @@
-.off{
-	filter: grayscale(100%);
+#light_indicator {
+	font-size: 1.3em;
+	color: #ffdf00 !important;
+	cursor: pointer;
+	user-select: none;
+	transition: all 0.5s;
+}
+
+#light_indicator.off {
+	color: grey !important;
 }
