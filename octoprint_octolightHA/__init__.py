@@ -68,7 +68,7 @@ class OctoLightHAPlugin(
 	
 	def get_HA_state(self):
 		_entity_id = self.config['entity_id']
-		url = self.config['address'] + '/api' + _entity_id
+		url = self.config['address'] + '/api/states/' + _entity_id
 		
 		headers = dict(Authorization='Bearer ' + self.config['api_key'])
 
@@ -96,7 +96,8 @@ class OctoLightHAPlugin(
 	def toggle_HA_state(self):
 		self._logger.debug("Running toggle_HA_state")
 		_entity_id = self.config['entity_id']
-		url = self.config['address'] + '/api/services/light/toggle'
+		_entity_domain = _entity_id.split('.')[0]
+		url = self.config['address'] + '/api/services/' + _entity_domain + '/toggle'
 		data = '{"entity_id":"' + _entity_id + '"}'
 		
 		headers = dict(Authorization='Bearer ' + self.config['api_key'])
