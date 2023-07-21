@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, unicode_literals
 
+import re
 import octoprint.plugin
 from octoprint.events import Events
 import flask
@@ -22,7 +23,6 @@ class OctoLightHAPlugin(
 
 	def __init__(self):
 		self.config = dict()
-
 		self.isLightOn = False
 
 	### REMOVE SETTINGS IF UPLOADED ###
@@ -210,6 +210,8 @@ class OctoLightHAPlugin(
 			return
 
 	def on_settings_save(self, data):
+		if 'address' in data:
+			data['address'] = re.sub(r'/*$', '', data['address'])
 		octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
 		self.reload_settings()
 
