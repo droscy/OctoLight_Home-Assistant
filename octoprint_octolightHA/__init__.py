@@ -114,12 +114,17 @@ class OctoLightHAPlugin(
 		except Exception:
 			self._logger.exception("Exception while making API call")
 		
-		status = response.json()[0]['state']
-		if status == 'on':
-			light_bool = True
-		else:
-			light_bool = False
+		try:
+			status = response.json()[0]['state']
+
+			if status == 'on':
+				light_bool = True
+			else:
+				light_bool = False
 		
+		except:
+			light_bool = self.get_HA_state()
+
 		self._logger.debug("TOGGLE: Current light status is: {}".format(self.light_state))
 		return light_bool
 
