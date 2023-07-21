@@ -1,18 +1,18 @@
 $(function() {
     function OctolightHAViewModel(parameters){
-    	var self = this;
+        var self = this;
 
         self.settingsViewModel = parameters[0]
         self.loginState = parameters[1];
 
-    	self.light_indicator = $("#light_indicator");
-    	self.isLightOn = ko.observable(undefined);
+        self.light_indicator = $("#light_indicator");
+        self.isLightOn = ko.observable(undefined);
 
         self.onBeforeBinding = function() {
             self.settings = self.settingsViewModel.settings;
         };
 
-    	self.onDataUpdaterPluginMessage = function(plugin, data) {
+        self.onDataUpdaterPluginMessage = function(plugin, data) {
             if (plugin != "octolightHA") {
                 return;
             }
@@ -39,3 +39,5 @@ $(function() {
         elements: ["#navbar_plugin_octolightHA","#settings_plugin_octolightHA"]
     });
 });
+
+// vim: ts=4 sw=4 et
