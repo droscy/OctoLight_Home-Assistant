@@ -74,10 +74,21 @@ class OctoLightHAPlugin(
             css=['css/octolightHA.css'],
         )
 
+    def is_config_completed(self):
+        try:
+            return bool(self.config[CONFIG_ADDRESS]
+                    and self.config[CONFIG_ENTITY_ID]
+                    and self.config[CONFIG_API_KEY])
+
+        except Exception:
+            return False
+
     def is_HA_state_on(self):
         self._logger.debug('getting current status of light')
 
-        # TODO mettere controllo su configurazione fatta
+        if not self.is_config_completed():
+            self._logger.warning('configuration is not complete, light controls are disabled')
+            return False
 
         url = f'{self.config[CONFIG_ADDRESS]}/api/states/{self.config[CONFIG_ENTITY_ID]}'
         headers = dict(Authorization=f'Bearer {self.config[CONFIG_API_KEY]}')
@@ -105,17 +116,19 @@ class OctoLightHAPlugin(
             else:
                 result = _parse_status(status)
 
-        self._logger.debug(f'the light is currently {status} (returning {result}')
+        self._logger.debug(f'the light is currently {status}')
         return result
 
     def toggle_HA_state(self):
         self._logger.debug('toggling light')
         old_isLightOn = self.isLightOn
 
+        if not self.is_config_completed():
+            self._logger.warning('configuration is not complete, light controls are disabled')
+            return
+
         _entity_id = self.config[CONFIG_ENTITY_ID]
         _entity_domain = _entity_id.split('.')[0]
-
-        # TODO mettere controllo su configurazione fatta
 
         url = f'{self.config[CONFIG_ADDRESS]}/api/services/{_entity_domain}/toggle'
         headers = dict(Authorization=f'Bearer {self.config[CONFIG_API_KEY]}')
