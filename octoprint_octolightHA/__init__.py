@@ -1,13 +1,27 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, unicode_literals
 
 import re
-import octoprint.plugin
-from octoprint.events import Events
+import time
 import flask
-
-# HomeAssistant Compatibility
 import requests
+import octoprint.plugin
+
+from octoprint.events import Events
+from requests.exceptions import InvalidURL, ConnectionError
+
+
+CONFIG_ADDRESS = 'address'
+CONFIG_API_KEY = 'api_key'
+CONFIG_ENTITY_ID = 'entity_id'
+CONFIG_VERIFY_CERTIFICATE = 'verify_certificate'
+
+
+def _parse_status(status):
+    if status == 'on':
+        return True
+    else:
+        return False
+
 
 class OctoLightHAPlugin(
         octoprint.plugin.AssetPlugin,
@@ -16,23 +30,20 @@ class OctoLightHAPlugin(
         octoprint.plugin.SimpleApiPlugin,
         octoprint.plugin.SettingsPlugin,
         octoprint.plugin.EventHandlerPlugin,
-        octoprint.plugin.RestartNeedingPlugin
+        octoprint.plugin.RestartNeedingPlugin,
     ):
-
-    light_state = False
 
     def __init__(self):
         self.config = dict()
-        self.isLightOn = False
+        self.isLightOn = False  # binded to js static file
 
-    ### REMOVE SETTINGS IF UPLOADED ###
     def get_settings_defaults(self):
-        return dict(
-            address = '',
-            api_key = '',
-            entity_id = '',
-            verify_certificate = False,
-        )
+        return {
+            CONFIG_ADDRESS: '',
+            CONFIG_API_KEY: '',
+            CONFIG_ENTITY_ID: '',
+            CONFIG_VERIFY_CERTIFICATE: False,
+        }
 
     def on_settings_initialized(self):
         self.reload_settings()
@@ -41,209 +52,199 @@ class OctoLightHAPlugin(
         for k, v in self.get_settings_defaults().items():
             if type(v) == str:
                 v = self._settings.get([k])
+            elif type(v) == bool:
+                v = self._settings.get_boolean([k])
             elif type(v) == int:
                 v = self._settings.get_int([k])
             elif type(v) == float:
                 v = self._settings.get_float([k])
-            elif type(v) == bool:
-                v = self._settings.get_boolean([k])
 
             self.config[k] = v
-            self._logger.debug("{}: {}".format(k, v))
+            self._logger.debug(f'{k}: {v}')
 
     def get_template_configs(self):
         return [
-            dict(type="navbar", custom_bindings=True),
-            dict(type="settings", custom_bindings=True)
+            dict(type='navbar', custom_bindings=True),
+            dict(type='settings', custom_bindings=True),
         ]
 
     def get_assets(self):
-        # Define your plugin's asset files to automatically include in the
-        # core UI here.
         return dict(
-            js=["js/octolightHA.js"],
-            css=["css/octolightHA.css"],
-            #less=["less/octolightHA.less"]
+            js=['js/octolightHA.js'],
+            css=['css/octolightHA.css'],
         )
 
-    def get_HA_state(self):
-        _entity_id = self.config['entity_id']
-        url = self.config['address'] + '/api/states/' + _entity_id
+    def is_HA_state_on(self):
+        self._logger.debug('getting current status of light')
 
-        headers = dict(Authorization='Bearer ' + self.config['api_key'])
+        # TODO mettere controllo su configurazione fatta
 
-        response = None
-        verify_certificate = self.config['verify_certificate']
+        url = f'{self.config[CONFIG_ADDRESS]}/api/states/{self.config[CONFIG_ENTITY_ID]}'
+        headers = dict(Authorization=f'Bearer {self.config[CONFIG_API_KEY]}')
+        verify = self.config[CONFIG_VERIFY_CERTIFICATE]
+
+        status = None
+        result = None
+
         try:
-            response = requests.get(url, headers=headers, verify=verify_certificate)
-        except (
-                requests.exceptions.InvalidURL,
-                requests.exceptions.ConnectionError
-        ):
-            self._logger.error("Unable to communicate with server. Check settings.")
-        except Exception:
-            self._logger.exception("Exception while making API call")
+            response = requests.get(url, headers=headers, verify=verify)
 
-        status = response.json()['state']
-        if(status == 'on'):
-            light_bool = True
+        except (InvalidURL, ConnectionError) as err:
+            self._logger.error(f'unable to communicate with server, please check settings, error: {err}')
+
+        except Exception as err:
+            self._logger.exception(f'exception while making API call: {err}')
+
         else:
-            light_bool = False
+            try:
+                status = response.json()['state']
 
-        self._logger.debug("STATUS: Current light status is: {}".format(self.light_state))
-        return light_bool
+            except Exception as err:
+                self._logger.exception(f'exception while parsing API result: {err}')
+
+            else:
+                result = _parse_status(status)
+
+        self._logger.debug(f'the light is currently {status} (returning {result}')
+        return result
 
     def toggle_HA_state(self):
-        self._logger.debug("Running toggle_HA_state")
-        _entity_id = self.config['entity_id']
-        _entity_domain = _entity_id.split('.')[0]
-        url = self.config['address'] + '/api/services/' + _entity_domain + '/toggle'
-        data = '{"entity_id":"' + _entity_id + '"}'
-
-        headers = dict(Authorization='Bearer ' + self.config['api_key'])
-
-        response = None
-        verify_certificate = self.config['verify_certificate']
-        try:
-            response = requests.post(url, headers=headers, data=data, verify=verify_certificate)
-        except (
-                requests.exceptions.InvalidURL,
-                requests.exceptions.ConnectionError
-        ):
-            self._logger.error("Unable to communicate with server. Check settings.")
-        except Exception:
-            self._logger.exception("Exception while making API call")
-
-        try:
-            status = response.json()[0]['state']
-
-            if status == 'on':
-                light_bool = True
-            else:
-                light_bool = False
-
-        except:
-            light_bool = self.get_HA_state()
-
-        self._logger.debug("TOGGLE: Current light status is: {}".format(self.light_state))
-        return light_bool
-
-    def on_after_startup(self):
-        self._logger.info("--------------------------------------------")
-        self._logger.info("OctoLightHA started, listening for GET request")
-        self._logger.info("Address: {}, API_Key: {}, Entity_ID: {}, Verify_Certificate: {}".format(
-            self._settings.get(["address"]),
-            self._settings.get(["api_key"]),
-            self._settings.get(["entity_id"]),
-            self._settings.get(["verify_certificate"]),
-        ))
-
-        self.light_state = self.get_HA_state()
-        self.isLightOn = self.light_state
-        self._plugin_manager.send_plugin_message(self._identifier, dict(isLightOn=self.light_state))
-        self._logger.debug("POST request. Light state: {}, isLightOn: {}".format(
-            self.light_state,
-            self.isLightOn
-        ))
-
-        self._logger.debug("Current light status is: {}".format(self.light_state))
-        self._logger.debug("--------------------------------------------")
-
-        self._plugin_manager.send_plugin_message(self._identifier, dict(isLightOn=self.light_state))
-
-    def light_toggle(self):
-        self._logger.debug("PRE request. Light state: {}, isLightOn: {}".format(
-            self.light_state,
-            self.isLightOn
-        ))
-        self.light_state = self.toggle_HA_state() # Returns the current state of the light
-        self.isLightOn = self.light_state
-        self._plugin_manager.send_plugin_message(self._identifier, dict(isLightOn=self.light_state))
-        self._logger.debug("POST request. Light state: {}, isLightOn: {}".format(
-            self.light_state,
-            self.isLightOn
-        ))
-        return self.light_state
-
-    def on_api_get(self, request):
+        self._logger.debug('toggling light')
         old_isLightOn = self.isLightOn
-        self._logger.debug("API REQUEST isLightOn: {}".format(self.isLightOn))
-        action = request.args.get('action', default="toggle", type=str)
 
-        if action == "toggle":
-            self._logger.debug("Running api action toggle")
-            self.light_toggle()
+        _entity_id = self.config[CONFIG_ENTITY_ID]
+        _entity_domain = _entity_id.split('.')[0]
 
-            if (old_isLightOn != self.isLightOn):
-                self._logger.debug("TOGGLE: Light state changed.")
+        # TODO mettere controllo su configurazione fatta
 
-            return flask.jsonify(state=self.light_state)
+        url = f'{self.config[CONFIG_ADDRESS]}/api/services/{_entity_domain}/toggle'
+        headers = dict(Authorization=f'Bearer {self.config[CONFIG_API_KEY]}')
+        data = {'entity_id': _entity_id}
+        verify = self.config[CONFIG_VERIFY_CERTIFICATE]
 
-        elif action == "getState":
-            self._logger.debug("Running api action getstate")
-            self.light_state = self.get_HA_state()
-            self.isLightOn = self.light_state
+        result = None
 
-            if (old_isLightOn != self.isLightOn):
-                self._logger.debug("GETSTATE: Light state changed.")
+        try:
+            response = requests.post(url, headers=headers, json=data, verify=verify)
 
-            return flask.jsonify(state=self.light_state)
+        except (InvalidURL, ConnectionError) as err:
+            self._logger.error(f'unable to communicate with server, please check settings, error: {err}')
 
-        elif action == "turnOn":
-            self._logger.debug("Running api action turnon")
-            if not self.light_state:
-                self.light_state = self.light_toggle()
-            if (old_isLightOn != self.isLightOn):
-                self._logger.debug("TURNON: Light state changed.")
-
-            return flask.jsonify(state=self.light_state)
-
-        elif action == "turnOff":
-            self._logger.debug("Running api action turnoff")
-            if self.light_state:
-                self.light_state = self.light_toggle()
-            if (old_isLightOn != self.isLightOn):
-                self._logger.debug("TURNOFF: Light state changed.")
-
-            return flask.jsonify(state=self.light_state)
+        except Exception as err:
+            self._logger.exception(f'exception while making API call: {err}')
 
         else:
-            return flask.jsonify(error="action not recognized")
+            try:
+                status = response.json()[0]['state']
+
+            except (IndexError, KeyError) as err:
+                self._logger.debug('new status not reported, sleeping...')
+                time.sleep(1)
+                result = self.is_HA_state_on()
+
+            except Exception as err:
+                self._logger.exception(f'exception while parsing API result: {err}')
+
+            else:
+                result = _parse_status(status)
+
+        if result != old_isLightOn:
+            self._logger.info('light switched {}'.format('ON' if result else 'OFF'))
+
+        else:
+            self._logger.warning('cannot toggle light')
+
+        return result
+
+    def toggle_light(self):
+        self.isLightOn = self.toggle_HA_state()
+        self._plugin_manager.send_plugin_message(self._identifier, dict(isLightOn=self.isLightOn))
+
+    def refresh_light_status(self):
+        self.isLightOn = self.is_HA_state_on()
+        self._plugin_manager.send_plugin_message(self._identifier, dict(isLightOn=self.isLightOn))
+
+    def on_after_startup(self):
+        self._logger.info('OctoLightHA started, listening for GET requests')
+        self.refresh_light_status()
+
+    def on_api_get(self, request):
+        self._logger.debug(f'API REQUEST isLightOn: {self.isLightOn}')
+        action = request.args.get('action', default='toggle', type=str)
+        self._logger.debug(f'running API action {action}')
+
+        old_isLightOn = self.isLightOn
+        if action == 'toggle':
+            self.toggle_light()
+
+            if old_isLightOn != self.isLightOn:
+                self._logger.debug('TOGGLE: light state changed')
+
+            return flask.jsonify(state=self.isLightOn)
+
+        elif action == 'getState':
+            self.refresh_light_status()
+
+            if old_isLightOn != self.isLightOn:
+                self._logger.debug('GETSTATE: light state changed.')
+
+            return flask.jsonify(state=self.isLightOn)
+
+        elif action == 'turnOn':
+            if not self.isLightOn:
+                self.toggle_light()
+
+            if old_isLightOn != self.isLightOn:
+                self._logger.debug('TURNON: light state changed.')
+
+            return flask.jsonify(state=self.isLightOn)
+
+        elif action == 'turnOff':
+            if self.isLightOn:
+                self.toggle_light()
+
+            if old_isLightOn != self.isLightOn:
+                self._logger.debug('TURNOFF: light state changed.')
+
+            return flask.jsonify(state=self.isLightOn)
+
+        else:
+            return flask.jsonify(error='action not recognized')
 
     def on_event(self, event, payload):
         if event == Events.CLIENT_OPENED:
-            self._plugin_manager.send_plugin_message(self._identifier, dict(isLightOn=self.light_state))
-            return
+            self.refresh_light_status()
 
     def on_settings_save(self, data):
-        if 'address' in data:
-            data['address'] = re.sub(r'/*$', '', data['address'])
+        if CONFIG_ADDRESS in data:
+            data[CONFIG_ADDRESS] = re.sub(r'/*$', '', data[CONFIG_ADDRESS])
+
         octoprint.plugin.SettingsPlugin.on_settings_save(self, data)
         self.reload_settings()
 
     def get_update_information(self):
         return dict(
             octolightHA=dict(
-                displayName="OctoLightHA",
+                displayName='OctoLightHA',
                 displayVersion=self._plugin_version,
 
-                type="github_release",
+                type='github_release',
                 current=self._plugin_version,
 
-                user="mark.bloom",
-                repo="OctoLightHA",
-                pip="https://github.com/mark-bloom/OctoLight_Home-Assistant/archive/{target}.zip"
+                user='droscy',
+                repo='OctoLightHA',
+                pip='https://github.com/droscy/OctoLight_Home-Assistant/archive/{target}.zip'
             )
         )
 
     def register_custom_events(self):
-        return ["light_state_changed"]
+        return ['light_state_changed']
 
-__plugin_pythoncompat__ = ">=2.7,<4"
+__plugin_pythoncompat__ = '>=3.0,<4'
 __plugin_implementation__ = OctoLightHAPlugin()
 
 __plugin_hooks__ = {
-    "octoprint.plugin.softwareupdate.check_config":
+    'octoprint.plugin.softwareupdate.check_config':
     __plugin_implementation__.get_update_information
 }
 

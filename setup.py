@@ -14,20 +14,20 @@ plugin_package = "octoprint_octolightHA"
 plugin_name = "OctoLight Home Assistant"
 
 # The plugin's version. Can be overwritten within OctoPrint's internal data via __plugin_version__ in the plugin module
-plugin_version = "0.0.1"
+plugin_version = "0.0.1+simros1"
 
 # The plugin's description. Can be overwritten within OctoPrint's internal data via __plugin_description__ in the plugin
 # module
-plugin_description = """A simple plugin that adds a button to the navigation bar for toggling a HomeAssistant connected Light."""
+plugin_description = """A simple plugin that adds a button to the navigation bar for toggling a HomeAssistant connected Light/Switch."""
 
 # The plugin's author. Can be overwritten within OctoPrint's internal data via __plugin_author__ in the plugin module
-plugin_author = "Mark Bloom > forked off Žiga Kralj"
+plugin_author = "Simone Rossetto > forked off Mark Bloom > forked off Žiga Kralj"
 
 # The plugin's author's mail address.
-plugin_author_email = "markbloom@outlook.com"
+plugin_author_email = "simros85@gmail.com"
 
 # The plugin's homepage URL. Can be overwritten within OctoPrint's internal data via __plugin_url__ in the plugin module
-plugin_url = "https://github.com/mark-bloom/OctoLight-HomeAssistant"
+plugin_url = "https://github.com/droscy/OctoLight_Home-Assistant"
 
 # The plugin's license. Can be overwritten within OctoPrint's internal data via __plugin_license__ in the plugin module
 plugin_license = "AGPLv3"
